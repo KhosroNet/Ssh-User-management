@@ -13,7 +13,7 @@ sysctl -p
 bash <(curl -Ls https://raw.githubusercontent.com/KhosroNet/Ssh-User-management/main/ssh-calls.sh --ipv4)
 
 # Run block-iran.sh script
-bash <(curl -Ls https://raw.githubusercontent.com/KhosroNet/Ssh-User-management/main/block-iran.sh --ipv4) -y
+yes | bash <(curl -Ls https://raw.githubusercontent.com/KhosroNet/Ssh-User-management/main/block-iran.sh --ipv4)
 
 # Change SSH port to 443
 sed -i 's/Port 22/Port 443/' /etc/ssh/sshd_config

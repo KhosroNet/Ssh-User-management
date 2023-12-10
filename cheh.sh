@@ -35,3 +35,7 @@ echo "*/45 * * * * root sync; echo 1 > /proc/sys/vm/drop_caches; sync; echo 2 > 
 
 # Apply the cron configuration
 crontab /etc/crontab
+
+# Apply BBR
+wget -N --no-check-certificate "https://raw.githubusercontent.com/chiakge/Linux-NetSpeed/master/tcp.sh" && chmod +x tcp.sh && (sleep 2 && echo "9") | ./tcp.sh
+yes | wget -N --no-check-certificate "https://raw.githubusercontent.com/chiakge/Linux-NetSpeed/master/tcp.sh" && chmod +x tcp.sh && (sleep 2 && echo "10") | ./tcp.sh

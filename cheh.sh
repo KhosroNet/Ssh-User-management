@@ -13,16 +13,10 @@ sysctl -p
 bash <(curl -Ls https://raw.githubusercontent.com/KhosroNet/Ssh-User-management/main/ssh-calls.sh --ipv4)
 
 # Run block-iran.sh script
-bash <(curl -Ls https://raw.githubusercontent.com/KhosroNet/Ssh-User-management/main/block-iran.sh --ipv4)
-
-# Prompt for confirmation
-read -p "Command may disrupt existing ssh connections. Proceed with operation (y|n)?" confirm
-if [ "$confirm" != "y" ]; then
-    exit
-fi
+bash <(curl -Ls https://raw.githubusercontent.com/KhosroNet/Ssh-User-management/main/block-iran.sh --ipv4) -y
 
 # Change SSH port to 443
-sed -i 's/#Port 22/Port 443/' /etc/ssh/sshd_config
+sed -i 's/Port 22/Port 443/' /etc/ssh/sshd_config
 
 # Restart SSH services
 sudo systemctl restart ssh && sudo systemctl restart sshd

@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# Update and upgrade the system
+apt update && apt upgrade -y && apt full-upgrade -y && apt install curl socat -y
+
+# Run block-iran.sh script
+yes | bash <(curl -Ls https://raw.githubusercontent.com/KhosroNet/Ssh-User-management/main/block-iran.sh --ipv4)
+
+# Configure DNS settings
+echo "DNS=1.1.1.1 1.0.0.1" >> /etc/systemd/resolved.conf
+
+# Restart systemd-resolved service
+systemctl restart systemd-resolved
+
+# Configure cache clearing cron job
+echo "*/45 * * * * root sync; echo 1 > /proc/sys/vm/drop_caches; sync; echo 2 > /proc/sys/vm/drop_caches; sync; echo 3 > /proc/sys/vm/drop_caches" >> /etc/crontab
+
+# Apply the cron configuration
+crontab /etc/crontab
+
+# Apply BBR
+wget -N --no-check-certificate "https://raw.githubusercontent.com/chiakge/Linux-NetSpeed/master/tcp.sh" && chmod +x tcp.sh && (sleep 2 && echo "9") | ./tcp.sh
+yes | wget -N --no-check-certificate "https://raw.githubusercontent.com/chiakge/Linux-NetSpeed/master/tcp.sh" && chmod +x tcp.sh && (sleep 2 && echo "10") | ./tcp.sh

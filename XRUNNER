@@ -2,33 +2,16 @@
 
 # Update and upgrade the system
 apt update && apt upgrade -y && apt full-upgrade -y && apt install curl socat -y
-
-# Disable IPv6
-echo "net.ipv6.conf.all.disable_ipv6=1" >> /etc/sysctl.conf
-echo "net.ipv6.conf.default.disable_ipv6=1" >> /etc/sysctl.conf
-echo "net.ipv6.conf.lo.disable_ipv6=1" >> /etc/sysctl.conf
-sysctl -p
-
-# Run ssh-calls.sh script
-bash <(curl -Ls https://raw.githubusercontent.com/KhosroNet/Ssh-User-management/main/ssh-calls.sh --ipv4)
+sudo apt update -q && sudo apt install -y sudo wget
 
 # Run block-iran.sh script
 yes | bash <(curl -Ls https://raw.githubusercontent.com/KhosroNet/Ssh-User-management/main/block-iran.sh --ipv4)
-
-# Change SSH port to 443
-sed -i 's/Port 22/Port 443/' /etc/ssh/sshd_config
-
-# Restart SSH services
-sudo systemctl restart ssh && sudo systemctl restart sshd
-
-# Deny incoming connections on port 22
-ufw deny 22
-
-# Restart systemd-resolved service
-systemctl restart systemd-resolved
 
 # Configure cache clearing cron job
 echo "*/45 * * * * root sync; echo 1 > /proc/sys/vm/drop_caches; sync; echo 2 > /proc/sys/vm/drop_caches; sync; echo 3 > /proc/sys/vm/drop_caches" >> /etc/crontab
 
 # Apply the cron configuration
 crontab /etc/crontab
+
+# Linux Optimizer
+wget "https://raw.githubusercontent.com/hawshemi/Linux-Optimizer/main/linux-optimizer.sh" -O linux-optimizer.sh && chmod +x linux-optimizer.sh && bash linux-optimizer.sh 

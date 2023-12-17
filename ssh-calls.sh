@@ -15,7 +15,7 @@ Description=UDP forwarding for badvpn-tun2socks
 After=nss-lookup.target
 
 [Service]
-ExecStart=/usr/local/bin/badvpn-udpgw --loglevel none --listen-addr 127.0.0.1:7301 --max-clients 999
+ExecStart=/usr/local/bin/badvpn-udpgw --loglevel none --listen-addr 127.0.0.1:7300 --max-clients 999
 User=videocall
 
 [Install]

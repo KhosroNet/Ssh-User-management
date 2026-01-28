@@ -1,56 +1,156 @@
 #!/bin/bash
 
-# Colors for output
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+# Conduit Docker Installation Script
+# This script sets up a Conduit node using Docker on Linux
 
-echo -e "${BLUE}--- Starting Conduit Node Installation (Official CLI Method) ---${NC}"
+set -e
 
-# 1. Update and install basic requirements
-echo -e "${GREEN}[1/5] Installing dependencies (wget, tar)...${NC}"
-sudo apt update && sudo apt install -y wget tar
+echo "====================================="
+echo "Conduit Docker Installation Script"
+echo "====================================="
+echo ""
 
-# 2. Create the project and data directory
-echo -e "${GREEN}[2/5] Setting up directory at ~/conduit-node...${NC}"
-mkdir -p ~/conduit-node/data
-cd ~/conduit-node
+# Check if Docker is installed
+if ! command -v docker &> /dev/null; then
+    echo "Docker is not installed. Installing Docker..."
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sh get-docker.sh
+    rm get-docker.sh
+    systemctl enable docker
+    systemctl start docker
+    echo "Docker installed successfully."
+else
+    echo "Docker is already installed."
+fi
 
-# 3. Download the correct binary from GitHub Releases
-# Using the standard naming convention for conduit linux-amd64
-echo -e "${GREEN}[3/5] Downloading official Conduit binary...${NC}"
-# لینک زیر مستقیم به فایل اجرایی لینوکس اشاره دارد (نسخه v1.0.5)
-wget -O conduit https://github.com/Psiphon-Inc/conduit/releases/download/v1.0.5/conduit-linux-amd64
-chmod +x conduit
+# Check if Docker Compose is installed
+if ! command -v docker compose &> /dev/null; then
+    echo "Docker Compose is not installed. Installing Docker Compose..."
+    
+    # Install Docker Compose plugin
+    apt-get update
+    apt-get install -y docker-compose-plugin
+    
+    echo "Docker Compose installed successfully."
+else
+    echo "Docker Compose is already installed."
+fi
 
-# 4. Create a Systemd service to run in background
-echo -e "${GREEN}[4/5] Creating background service...${NC}"
-sudo cat <<EOF > /etc/systemd/system/conduit.service
-[Unit]
-Description=Psiphon Conduit Node
-After=network.target
+# Create project directory
+PROJECT_DIR="/root/conduit"
+echo ""
+echo "Creating project directory at $PROJECT_DIR..."
+mkdir -p "$PROJECT_DIR"
+cd "$PROJECT_DIR"
 
-[Service]
-Type=simple
-User=root
-WorkingDirectory=$(pwd)
-# Parameters: bandwidth 40Mbps, max clients 50
-ExecStart=$(pwd)/conduit start --data-dir $(pwd)/data --bandwidth 40 --max-clients 50
-Restart=always
-RestartSec=5
+# Create data directory for persistent storage
+echo "Creating data directory..."
+mkdir -p data
 
-[Install]
-WantedBy=multi-user.target
+# Create docker-compose.yml
+echo "Creating docker-compose.yml..."
+cat > docker-compose.yml << 'EOF'
+version: '3.8'
+
+services:
+  conduit:
+    image: psiphoninc/conduit:latest
+    container_name: conduit
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    ports:
+      - "8080:8080"
+    environment:
+      - MAX_CLIENTS=50
+      - BANDWIDTH=40
+    command: start --data-dir /data -v
 EOF
 
-# 5. Launch the service
-echo -e "${GREEN}[5/5] Enabling and starting Conduit node...${NC}"
-sudo systemctl daemon-reload
-sudo systemctl enable conduit
-sudo systemctl start conduit
+echo "docker-compose.yml created successfully."
+echo ""
 
-echo -e "${BLUE}----------------------------------------${NC}"
-echo -e "${GREEN}Installation Success! 🚀${NC}"
-echo -e "Node key saved in: ${BLUE}$(pwd)/data/conduit_key.json${NC}"
-echo -e "To view live logs, run: ${BLUE}journalctl -u conduit -f${NC}"
-echo -e "${BLUE}----------------------------------------${NC}"
+# Create a simple management script
+echo "Creating management script..."
+cat > manage.sh << 'EOF'
+#!/bin/bash
+
+case "$1" in
+    start)
+        echo "Starting Conduit..."
+        docker compose up -d
+        echo "Conduit started. Use 'docker compose logs -f' to view logs."
+        ;;
+    stop)
+        echo "Stopping Conduit..."
+        docker compose down
+        echo "Conduit stopped."
+        ;;
+    restart)
+        echo "Restarting Conduit..."
+        docker compose restart
+        echo "Conduit restarted."
+        ;;
+    logs)
+        docker compose logs -f
+        ;;
+    status)
+        docker compose ps
+        ;;
+    update)
+        echo "Updating Conduit..."
+        docker compose pull
+        docker compose up -d
+        echo "Conduit updated."
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|logs|status|update}"
+        echo ""
+        echo "Examples:"
+        echo "  $0 start    - Start Conduit"
+        echo "  $0 stop     - Stop Conduit"
+        echo "  $0 restart  - Restart Conduit"
+        echo "  $0 logs     - View logs"
+        echo "  $0 status   - Check status"
+        echo "  $0 update   - Update to latest version"
+        exit 1
+        ;;
+esac
+EOF
+
+chmod +x manage.sh
+
+# Start Conduit
+echo "Starting Conduit for the first time..."
+docker compose up -d
+
+echo ""
+echo "====================================="
+echo "Installation Complete!"
+echo "====================================="
+echo ""
+echo "Project directory: $PROJECT_DIR"
+echo ""
+echo "Conduit is now running!"
+echo ""
+echo "Management commands:"
+echo "  cd $PROJECT_DIR"
+echo "  ./manage.sh start    - Start Conduit"
+echo "  ./manage.sh stop     - Stop Conduit"
+echo "  ./manage.sh restart  - Restart Conduit"
+echo "  ./manage.sh logs     - View logs"
+echo "  ./manage.sh status   - Check status"
+echo "  ./manage.sh update   - Update to latest version"
+echo ""
+echo "Or use Docker Compose directly:"
+echo "  cd $PROJECT_DIR"
+echo "  docker compose up -d       - Start in background"
+echo "  docker compose down        - Stop"
+echo "  docker compose logs -f     - View logs"
+echo ""
+echo "Data directory: $PROJECT_DIR/data"
+echo "Your node key is saved here and will persist across restarts."
+echo ""
+echo "To view logs now, run:"
+echo "  cd $PROJECT_DIR && docker compose logs -f"
+echo ""

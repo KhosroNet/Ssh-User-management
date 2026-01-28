@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# Conduit Docker Installation Script
-# This script sets up a Conduit node using Docker on Linux
-
 set -e
 
 echo "====================================="
@@ -10,87 +7,95 @@ echo "Conduit Docker Installation Script"
 echo "====================================="
 echo ""
 
-# Check if old installation exists
 PROJECT_DIR="/root/conduit"
+
+# حذف نصب قدیمی
 if [ -d "$PROJECT_DIR" ]; then
-    echo "Found existing Conduit installation at $PROJECT_DIR"
-    echo "Stopping and removing old installation..."
-    
+    echo "Removing old installation..."
     cd "$PROJECT_DIR"
+    docker-compose down 2>/dev/null || true
     
-    # Stop and remove old containers
-    if [ -f "docker-compose.yml" ]; then
-        docker-compose down 2>/dev/null || docker compose down 2>/dev/null || true
-    fi
-    
-    # Backup data directory if exists
     if [ -d "data" ]; then
-        echo "Backing up existing data directory..."
         BACKUP_DIR="/root/conduit_backup_$(date +%Y%m%d_%H%M%S)"
         mkdir -p "$BACKUP_DIR"
         cp -r data "$BACKUP_DIR/"
         echo "Data backed up to: $BACKUP_DIR"
     fi
     
-    # Remove old installation
     cd /root
     rm -rf "$PROJECT_DIR"
     echo "Old installation removed."
-    echo ""
 fi
 
-# Check if Docker is installed
-if ! command -v docker &> /dev/null; then
-    echo "Docker is not installed. Installing Docker..."
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sh get-docker.sh
-    rm get-docker.sh
-    systemctl enable docker
-    systemctl start docker
-    echo "Docker installed successfully."
-else
-    echo "Docker is already installed."
-fi
-
-# Check if docker-compose is installed
+# نصب docker-compose اگر نباشه
 if ! command -v docker-compose &> /dev/null; then
-    echo "Docker Compose is not installed. Installing Docker Compose..."
-    
-    # Install docker-compose
+    echo "Installing Docker Compose..."
     curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
     chmod +x /usr/local/bin/docker-compose
-    
-    echo "Docker Compose installed successfully."
-else
-    echo "Docker Compose is already installed."
+    echo "Docker Compose installed."
 fi
 
-# Create project directory
-echo ""
-echo "Creating project directory at $PROJECT_DIR..."
-mkdir -p "$PROJECT_DIR"
+# نصب git اگر نباشه
+if ! command -v git &> /dev/null; then
+    echo "Installing git..."
+    apt-get update
+    apt-get install -y git
+fi
+
+# کلون کردن ریپوزیتوری
+echo "Cloning Conduit repository..."
+git clone https://github.com/Psiphon-Inc/conduit.git "$PROJECT_DIR"
 cd "$PROJECT_DIR"
 
-# Create data directory for persistent storage
-echo "Creating data directory..."
+# ساخت دایرکتوری data
 mkdir -p data
 
-# Restore backed up data if exists
+# بازگردانی بکاپ
 LATEST_BACKUP=$(ls -td /root/conduit_backup_* 2>/dev/null | head -1)
 if [ -n "$LATEST_BACKUP" ] && [ -d "$LATEST_BACKUP/data" ]; then
-    echo "Restoring data from backup..."
+    echo "Restoring backup..."
     cp -r "$LATEST_BACKUP/data/"* data/ 2>/dev/null || true
-    echo "Data restored from backup."
 fi
 
-# Create docker-compose.yml
+# ساخت Dockerfile اگر نباشه
+if [ ! -f "Dockerfile" ]; then
+    echo "Creating Dockerfile..."
+    cat > Dockerfile << 'EOFDOCKER'
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /build
+
+RUN apk add --no-cache git make
+
+COPY . .
+
+RUN make setup && make build
+
+FROM alpine:latest
+
+RUN apk add --no-cache ca-certificates
+
+WORKDIR /app
+
+COPY --from=builder /build/dist/conduit /app/conduit
+
+RUN mkdir -p /data
+
+EXPOSE 8080
+
+ENTRYPOINT ["/app/conduit"]
+CMD ["start", "--data-dir", "/data", "-v"]
+EOFDOCKER
+fi
+
+# ساخت docker-compose.yml
 echo "Creating docker-compose.yml..."
-cat > docker-compose.yml << 'EOF'
+cat > docker-compose.yml << 'EOFCOMPOSE'
 version: '3.8'
 
 services:
   conduit:
-    image: psiphoninc/conduit:latest
+    build: .
     container_name: conduit
     restart: unless-stopped
     volumes:
@@ -100,15 +105,10 @@ services:
     environment:
       - MAX_CLIENTS=50
       - BANDWIDTH=40
-    command: start --data-dir /data -v
-EOF
+EOFCOMPOSE
 
-echo "docker-compose.yml created successfully."
-echo ""
-
-# Create a simple management script
-echo "Creating management script..."
-cat > manage.sh << 'EOF'
+# ساخت manage.sh
+cat > manage.sh << 'EOFMANAGE'
 #!/bin/bash
 
 case "$1" in
@@ -133,15 +133,24 @@ case "$1" in
     status)
         docker-compose ps
         ;;
+    rebuild)
+        echo "Rebuilding Conduit..."
+        docker-compose down
+        docker-compose build --no-cache
+        docker-compose up -d
+        echo "Conduit rebuilt and started."
+        ;;
     update)
         echo "Updating Conduit..."
-        docker-compose pull
+        git pull
+        docker-compose down
+        docker-compose build
         docker-compose up -d
         echo "Conduit updated."
         ;;
     uninstall)
         echo "Uninstalling Conduit..."
-        read -p "Are you sure? This will remove all data (y/n): " confirm
+        read -p "Remove all data? (y/n): " confirm
         if [ "$confirm" = "y" ]; then
             docker-compose down
             cd /root
@@ -152,32 +161,33 @@ case "$1" in
         fi
         ;;
     *)
-        echo "Usage: $0 {start|stop|restart|logs|status|update|uninstall}"
+        echo "Usage: $0 {start|stop|restart|logs|status|rebuild|update|uninstall}"
         echo ""
-        echo "Examples:"
-        echo "  $0 start      - Start Conduit"
-        echo "  $0 stop       - Stop Conduit"
-        echo "  $0 restart    - Restart Conduit"
-        echo "  $0 logs       - View logs"
-        echo "  $0 status     - Check status"
-        echo "  $0 update     - Update to latest version"
-        echo "  $0 uninstall  - Remove Conduit completely"
+        echo "Commands:"
+        echo "  start     - Start Conduit"
+        echo "  stop      - Stop Conduit"
+        echo "  restart   - Restart Conduit"
+        echo "  logs      - View logs (Ctrl+C to exit)"
+        echo "  status    - Check status"
+        echo "  rebuild   - Rebuild and restart"
+        echo "  update    - Pull latest code and rebuild"
+        echo "  uninstall - Remove Conduit"
         exit 1
         ;;
 esac
-EOF
+EOFMANAGE
 
 chmod +x manage.sh
 
-# Pull the latest image
-echo "Pulling latest Conduit image..."
-docker pull psiphoninc/conduit:latest
+# بیلد و اجرای Conduit
+echo ""
+echo "Building Conduit (this may take a few minutes)..."
+docker-compose build
 
-# Start Conduit
+echo ""
 echo "Starting Conduit..."
 docker-compose up -d
 
-# Wait a moment for container to start
 sleep 5
 
 echo ""
@@ -188,22 +198,15 @@ echo ""
 echo "Conduit is now running!"
 echo ""
 echo "Management commands:"
-echo "  cd $PROJECT_DIR"
-echo "  ./manage.sh start      - Start Conduit"
-echo "  ./manage.sh stop       - Stop Conduit"
-echo "  ./manage.sh restart    - Restart Conduit"
-echo "  ./manage.sh logs       - View logs"
-echo "  ./manage.sh status     - Check status"
-echo "  ./manage.sh update     - Update to latest version"
-echo "  ./manage.sh uninstall  - Remove Conduit completely"
+echo "  cd /root/conduit && ./manage.sh start     - Start"
+echo "  cd /root/conduit && ./manage.sh stop      - Stop"
+echo "  cd /root/conduit && ./manage.sh restart   - Restart"
+echo "  cd /root/conduit && ./manage.sh logs      - View logs"
+echo "  cd /root/conduit && ./manage.sh status    - Status"
+echo "  cd /root/conduit && ./manage.sh update    - Update"
 echo ""
-echo "Quick commands:"
-echo "  cd /root/conduit && ./manage.sh logs    - View logs"
-echo "  cd /root/conduit && ./manage.sh status  - Check status"
-echo ""
-echo "Checking Conduit status..."
-cd "$PROJECT_DIR"
+echo "Checking status..."
 docker-compose ps
 echo ""
-echo "View logs with: cd /root/conduit && ./manage.sh logs"
+echo "View logs: cd /root/conduit && ./manage.sh logs"
 echo ""

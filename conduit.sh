@@ -1,54 +1,51 @@
 #!/bin/bash
 
-# تنظیمات متغیرها
-WORKDIR="$HOME/conduit"
-BINARY_URL="https://github.com/Psiphon-Inc/conduit/releases/download/v1.0.1/conduit-linux-amd64.tar.gz"
+# Colors for output
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-echo "--- شروع نصب Psiphon Conduit ---"
+echo -e "${BLUE}--- Starting Conduit Node Installation ---${NC}"
 
-# ایجاد پوشه و ورود به آن
-mkdir -p "$WORKDIR"
-cd "$WORKDIR"
+# 1. Update system packages
+echo -e "${GREEN}[1/5] Updating system packages...${NC}"
+sudo apt update && sudo apt upgrade -y
 
-# دانلود فایل اصلی (نسخه اصلاح شده)
-echo "در حال دانلود فایل..."
-wget -q -O conduit.tar.gz "$BINARY_URL"
-if [ $? -ne 0 ]; then
-    echo "خطا در دانلود! لطفاً اتصال اینترنت سرور را چک کنید."
-    exit 1
+# 2. Install Docker & Docker Compose if not present
+if ! command -v docker &> /dev/null; then
+    echo -e "${GREEN}[2/5] Installing Docker and Docker Compose...${NC}"
+    sudo apt install -y docker.io docker-compose
+    sudo systemctl enable --now docker
+else
+    echo -e "${BLUE}[2/5] Docker is already installed.${NC}"
 fi
 
-# استخراج و دسترسی
-tar -xvf conduit.tar.gz
-chmod +x conduit
+# 3. Create project directory
+echo -e "${GREEN}[3/5] Setting up project directory at ~/conduit-node...${NC}"
+mkdir -p ~/conduit-node/data
+cd ~/conduit-node
 
-# ساخت سرویس سیستمی برای اجرای همیشگی
-echo "در حال تنظیم سرویس..."
-sudo bash -c "cat <<EOT > /etc/systemd/system/conduit.service
-[Unit]
-Description=Psiphon Conduit Node
-After=network.target
+# 4. Create docker-compose.yml
+echo -e "${GREEN}[4/5] Creating configuration file...${NC}"
+cat <<EOT > docker-compose.yml
+version: '3'
+services:
+  conduit:
+    image: ghcr.io/psiphon-inc/conduit:latest
+    container_name: conduit
+    restart: always
+    volumes:
+      - ./data:/data
+    # Parameters: 40Mbps limit, 50 max concurrent clients
+    command: start --data-dir /data --bandwidth 40 --max-clients 50
+EOT
 
-[Service]
-Type=simple
-User=$USER
-WorkingDirectory=$WORKDIR
-# تنظیمات: ۱۰۰ کاربر همزمان و ۵۰ مگابیت پهنای باند
-ExecStart=$WORKDIR/conduit start --max-clients 100 --bandwidth 50
-Restart=always
-RestartSec=10
+# 5. Launch the container
+echo -e "${GREEN}[5/5] Launching Conduit node...${NC}"
+sudo docker-compose up -d
 
-[Install]
-WantedBy=multi-user.target
-EOT"
-
-# فعال‌سازی و اجرا
-sudo systemctl daemon-reload
-sudo systemctl enable conduit
-sudo systemctl start conduit
-
-echo "------------------------------------------------"
-echo "نصب با موفقیت تمام شد!"
-echo "مشاهده وضعیت: sudo systemctl status conduit"
-echo "مشاهده لاگ زنده: sudo journalctl -u conduit -f"
-echo "------------------------------------------------"
+echo -e "${BLUE}----------------------------------------${NC}"
+echo -e "${GREEN}Installation Complete! 🚀${NC}"
+echo -e "To check your node status, run:"
+echo -e "${BLUE}cd ~/conduit-node && sudo docker-compose logs -f${NC}"
+echo -e "${BLUE}----------------------------------------${NC}"

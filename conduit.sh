@@ -38,7 +38,7 @@ fi
 # نصب git اگر نباشه
 if ! command -v git &> /dev/null; then
     echo "Installing git..."
-    apt-get update
+    apt-get update -qq
     apt-get install -y git
 fi
 
@@ -55,21 +55,24 @@ LATEST_BACKUP=$(ls -td /root/conduit_backup_* 2>/dev/null | head -1)
 if [ -n "$LATEST_BACKUP" ] && [ -d "$LATEST_BACKUP/data" ]; then
     echo "Restoring backup..."
     cp -r "$LATEST_BACKUP/data/"* data/ 2>/dev/null || true
+    echo "Backup restored."
 fi
 
-# ساخت Dockerfile اگر نباشه
-if [ ! -f "Dockerfile" ]; then
-    echo "Creating Dockerfile..."
-    cat > Dockerfile << 'EOFDOCKER'
+# ساخت Dockerfile
+echo "Creating Dockerfile..."
+cat > Dockerfile << 'EOFDOCKER'
 FROM golang:1.24-alpine AS builder
 
 WORKDIR /build
 
-RUN apk add --no-cache git make
+RUN apk add --no-cache git make bash
+
+COPY go.mod go.sum ./
+RUN go mod download
 
 COPY . .
 
-RUN make setup && make build
+RUN make build || go build -o dist/conduit ./cmd/conduit
 
 FROM alpine:latest
 
@@ -86,7 +89,6 @@ EXPOSE 8080
 ENTRYPOINT ["/app/conduit"]
 CMD ["start", "--data-dir", "/data", "-v"]
 EOFDOCKER
-fi
 
 # ساخت docker-compose.yml
 echo "Creating docker-compose.yml..."
@@ -102,9 +104,7 @@ services:
       - ./data:/data
     ports:
       - "8080:8080"
-    environment:
-      - MAX_CLIENTS=50
-      - BANDWIDTH=40
+    command: start --data-dir /data -v
 EOFCOMPOSE
 
 # ساخت manage.sh
@@ -208,5 +208,5 @@ echo ""
 echo "Checking status..."
 docker-compose ps
 echo ""
-echo "View logs: cd /root/conduit && ./manage.sh logs"
+echo "View logs with: cd /root/conduit && ./manage.sh logs"
 echo ""
